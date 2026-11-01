@@ -254,7 +254,7 @@ erDiagram
 **Pré-requisitos:** Docker Desktop (ou Docker Engine + Compose v2) e Git.
 
 ```bash
-git clone https://github.com/<seu-usuario>/Enterprise-AI-Automation-Suite.git
+git clone https://github.com/pedrohbenetton/Enterprise-AI-Automation-Suite.git
 cd Enterprise-AI-Automation-Suite
 
 # 1. Gera o .env com segredos aleatórios (Linux/macOS/Git Bash)
