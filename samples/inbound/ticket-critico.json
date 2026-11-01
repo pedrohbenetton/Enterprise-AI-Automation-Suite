@@ -1,0 +1,10 @@
+{
+  "source": "support_form",
+  "kind": "ticket",
+  "name": "Mariana Teixeira",
+  "email": "mariana.teixeira@logistica-exemplo.com.br",
+  "company": "Logística Exemplo S.A.",
+  "subject": "Integração de pedidos parada desde 8h",
+  "message": "Bom dia. Nossa integração de pedidos com a plataforma está fora do ar desde as 8h e já temos mais de 300 pedidos parados. Isso está impactando a expedição de hoje. Precisamos de retorno urgente.",
+  "metadata": { "plan": "enterprise", "account_id": "ACC-1042" }
+}

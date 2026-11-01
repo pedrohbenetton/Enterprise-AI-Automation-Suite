@@ -1,0 +1,4 @@
+# LF em todo o repositório: scripts rodam em containers Linux ("bad interpreter" com CRLF)
+# e os workflows/*.json gerados não podem ganhar diffs falsos de fim de linha.
+* text=auto eol=lf
+*.ps1 text eol=crlf

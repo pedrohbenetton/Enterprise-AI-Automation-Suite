@@ -1,0 +1,190 @@
+{
+  "name": "00 - Global Error Handler",
+  "nodes": [
+    {
+      "id": "fe266951-7010-4c32-8492-c4d42f65ada7",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "7ebd63ce-70a8-478d-a8b7-70d851be75de",
+      "name": "Load Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0e366211-4234-44e6-bddf-c187a3fe3c78",
+              "name": "config",
+              "type": "object",
+              "value": "={{ { slackChannelOps: $env.SLACK_CHANNEL_OPS || '#automation-ops' } }}"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "4bb22ce7-ac3e-40b9-a344-829f894ed320",
+      "name": "Format Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// GERADO por scripts/build-workflows.mjs a partir de: src/shared/errors.js\n// Edite os arquivos-fonte e rode \"npm run build\" — não edite este código na UI.\n\n// Error Workflow global — normaliza o payload do Error Trigger do n8n\n// em um registro da DLQ (tabela workflow_errors) e no texto de alerta do Slack.\n\nfunction formatErrorEvent(event) {\n  const exec = (event && event.execution) || {};\n  const trigger = (event && event.trigger) || {};\n  const wf = (event && event.workflow) || {};\n  const err = exec.error || trigger.error || {};\n  const message = String(err.message || err.description || 'erro desconhecido').slice(0, 2000);\n\n  const record = {\n    workflow_id: wf.id ? String(wf.id) : null,\n    workflow_name: wf.name || 'desconhecido',\n    execution_id: exec.id ? String(exec.id) : null,\n    execution_url: exec.url || null,\n    failed_node: exec.lastNodeExecuted || (err.node && err.node.name) || null,\n    error_message: message,\n    error_stack: err.stack ? String(err.stack).slice(0, 8000) : null,\n    payload: { mode: exec.mode || trigger.mode || null },\n  };\n\n  const slackText = [\n    `:red_circle: *Falha no workflow* \\`${record.workflow_name}\\``,\n    `Nó: ${record.failed_node || 'n/a'}`,\n    `Erro: ${message.slice(0, 500)}`,\n    record.execution_url ? `Execução: ${record.execution_url}` : 'Execução: (falha no gatilho)',\n  ].join('\\n');\n\n  return { record, slackText };\n}\n\n// --- entrada do nó ---\n\nreturn { json: formatErrorEvent($json) };"
+      }
+    },
+    {
+      "id": "426d337e-58a4-44af-9cf5-0ad7e0169a14",
+      "name": "Log to DLQ (Postgres)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_errors (workflow_id, workflow_name, execution_id, execution_url, failed_node, error_message, error_stack, payload)\nSELECT r.workflow_id, r.workflow_name, r.execution_id, r.execution_url, r.failed_node, r.error_message, r.error_stack, r.payload\nFROM jsonb_populate_record(NULL::workflow_errors, $1::jsonb) AS r\nRETURNING id;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify($json.record)] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "cred-postgres-app",
+          "name": "Postgres Automation"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "id": "c50c2946-9c9a-479f-84a9-44ea91821a26",
+      "name": "Alert Ops (Slack)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://slack.com/api/chat.postMessage",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackApi",
+        "sendQuery": false,
+        "sendHeaders": false,
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  channel: $('Load Config').first().json.config.slackChannelOps,\n  text: $('Format Error').first().json.slackText + ($json.error ? '\\n:warning: DLQ indisponível: ' + ($json.error.message || $json.error) : '\\nDLQ id: ' + $json.id)\n}) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "slackApi": {
+          "id": "cred-slack-bot",
+          "name": "Slack Bot"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "c933ebe8-fa54-4ad2-a6ea-97b8dfab1dc7",
+      "name": "Sticky Note E1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        40
+      ],
+      "parameters": {
+        "content": "## Global Error Handler (DLQ)\nRecebe qualquer falha não tratada dos workflows que o referenciam em *Settings → Error Workflow*. Persiste em `workflow_errors` e alerta `#automation-ops`. Se o Postgres estiver fora, o alerta informa que a DLQ falhou.",
+        "width": 960,
+        "height": 200,
+        "color": 2
+      }
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Load Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Config": {
+      "main": [
+        [
+          {
+            "node": "Format Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Error": {
+      "main": [
+        [
+          {
+            "node": "Log to DLQ (Postgres)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to DLQ (Postgres)": {
+      "main": [
+        [
+          {
+            "node": "Alert Ops (Slack)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
